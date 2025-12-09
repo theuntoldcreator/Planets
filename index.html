@@ -265,6 +265,74 @@
       border-color: var(--highlight);
       box-shadow: 0 0 20px var(--highlight);
     }
+
+    /* MOBILE RESPONSIVE STYLES */
+    @media (max-width: 768px) {
+      #ui-layer {
+        padding: 16px;
+        padding-bottom: 30px;
+        /* Safe area */
+      }
+
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .info-card {
+        padding: 12px;
+        max-width: 100%;
+      }
+
+      .info-card h1 {
+        font-size: 1.1rem;
+      }
+
+      .info-card p {
+        font-size: 0.8rem;
+        display: none;
+        /* Hide description to save space on mobile */
+      }
+
+      .status-pill {
+        font-size: 0.75rem;
+        padding: 6px 12px;
+      }
+
+      .controls-container {
+        width: 100%;
+        gap: 12px;
+      }
+
+      .pill-bar {
+        width: 100%;
+        justify-content: flex-start;
+        /* Align left */
+        overflow-x: auto;
+        /* Scrollable horizontal */
+        flex-wrap: nowrap;
+        padding: 4px;
+        background: rgba(20, 20, 30, 0.8);
+        /* Darker backdrop for visibility */
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        /* Hide scrollbar Firefox */
+      }
+
+      .pill-bar::-webkit-scrollbar {
+        display: none;
+        /* Hide scrollbar Chrome/Safari */
+      }
+
+      .pill-btn {
+        font-size: 0.8rem;
+        padding: 6px 14px;
+        white-space: nowrap;
+        /* Keep buttons on one line */
+        flex-shrink: 0;
+      }
+    }
   </style>
 
   <!-- Three.js Import Map -->
@@ -448,14 +516,22 @@
           }
           case 'chaos':
           default:
-            // Scatter
+            // Scatter away state
             const r = CONFIG.baseRadius * 6;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const dist = r * (0.5 + Math.random() * 0.5);
-            x = dist * Math.sin(phi) * Math.cos(theta);
-            y = dist * Math.sin(phi) * Math.sin(theta);
-            z = dist * Math.cos(phi);
+
+            // Rejection sampling to avoid particles hitting the camera (Z ~ 11)
+            // We keep them well behind the camera plane -> max Z = 5
+            let safe = false;
+            while (!safe) {
+              const theta = Math.random() * Math.PI * 2;
+              const phi = Math.acos(2 * Math.random() - 1);
+              const dist = r * (0.5 + Math.random() * 0.5);
+              x = dist * Math.sin(phi) * Math.cos(theta);
+              y = dist * Math.sin(phi) * Math.sin(theta);
+              z = dist * Math.cos(phi);
+
+              if (z < 6.0) safe = true; // Safe zone
+            }
             break;
         }
         positions[i3] = x;
@@ -628,9 +704,18 @@
 
         // Webcam
         webcam = document.createElement('video');
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user", // Prefer front camera on mobile
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
         webcam.srcObject = stream;
         await webcam.play();
+
+        // Allow video to play inline on iOS
+        webcam.setAttribute('playsinline', '');
 
         document.getElementById('loader').style.opacity = '0';
         setTimeout(() => document.getElementById('loader').remove(), 500);
