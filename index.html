@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planets - Interactive Solar System</title>
+  <style>
+    /* CSS RESET & BASE STYLES */
+    :root {
+      --glass-bg: rgba(20, 20, 30, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --highlight: #a855f7;
+      /* Purple */
+      --highlight-blue: #3b82f6;
+      /* Blue */
+      --text-main: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.6);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+      /* Prevent selection while interacting */
+    }
+
+    body {
+      background-color: #050505;
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      /* No scrollbars */
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* CANVAS */
+    #scene-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* UI OVERLAY */
+    #ui-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      /* Let clicks pass through to canvas */
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+    }
+
+    /* HEADER */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: auto;
+    }
+
+    .info-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      padding: 16px;
+      border-radius: 12px;
+      max-width: 300px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      transition: transform 0.2s;
+    }
+
+    .info-card h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+      background: linear-gradient(to right, #fff, #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .info-card p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* STATUS INDICATOR */
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      padding: 8px 16px;
+      border-radius: 99px;
+      border: 1px solid var(--glass-border);
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #ef4444;
+      /* Red default */
+      box-shadow: 0 0 8px #ef4444;
+      transition: background-color 0.3s, box-shadow 0.3s;
+    }
+
+    .status-dot.active {
+      background-color: #22c55e;
+      /* Green */
+      box-shadow: 0 0 8px #22c55e;
+    }
+
+    /* BOTTOM CONTROLS */
+    .controls-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+      pointer-events: auto;
+      margin-bottom: 20px;
+    }
+
+    /* TEMPLATE SELECTOR */
+    .pill-bar {
+      display: flex;
+      gap: 8px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      padding: 6px;
+      border-radius: 99px;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .pill-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 99px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .pill-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .pill-btn.active {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* COLOR SELECTOR */
+    .color-bar {
+      display: flex;
+      gap: 12px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      padding: 10px 16px;
+      border-radius: 99px;
+      border: 1px solid var(--glass-border);
+    }
+
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.2);
+    }
+
+    .color-swatch.active {
+      border-color: #fff;
+      transform: scale(1.2);
+    }
+
+    /* LOADING SCREEN */
+    #loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.5s;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-left-color: var(--highlight);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      letter-spacing: 1px;
+    }
+
+    /* HAND CURSOR */
+    #hand-cursor {
+      position: fixed;
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 50;
+      transform: translate(-50%, -50%);
+      display: none;
+      /* Hidden by default until hand detected */
+      box-shadow: 0 0 15px var(--highlight-blue);
+      transition: width 0.2s, height 0.2s;
+    }
+
+    #hand-cursor.pinched {
+      background-color: rgba(255, 255, 255, 0.2);
+      width: 30px;
+      height: 30px;
+      border-color: var(--highlight);
+      box-shadow: 0 0 20px var(--highlight);
+    }
+  </style>
+
+  <!-- Three.js Import Map -->
+  <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+
+  <!-- LOADING SCREEN -->
+  <div id="loader">
+    <div class="spinner"></div>
+    <div class="loading-text">INITIALIZING SYSTEMS...</div>
+  </div>
+
+  <!-- 3D SCENE -->
+  <div id="scene-container"></div>
+
+  <!-- UI OVERLAY -->
+  <div id="ui-layer">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="info-card">
+        <h1>Planets</h1>
+        <p>Interactive Particle System.<br>Use hand gestures to control.</p>
+      </div>
+      <div class="status-pill">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="status-text">No Hand Detected</span>
+      </div>
+    </div>
+
+    <!-- VISUAL CURSOR -->
+    <div id="hand-cursor"></div>
+
+    <!-- CONTROLS -->
+    <div class="controls-container">
+      <!-- Templates -->
+      <div class="pill-bar">
+        <button class="pill-btn active" data-template="sun">Sun</button>
+        <button class="pill-btn" data-template="mercury">Mercury</button>
+        <button class="pill-btn" data-template="venus">Venus</button>
+        <button class="pill-btn" data-template="earth">Earth</button>
+        <button class="pill-btn" data-template="mars">Mars</button>
+        <button class="pill-btn" data-template="jupiter">Jupiter</button>
+        <button class="pill-btn" data-template="saturn">Saturn</button>
+        <button class="pill-btn" data-template="uranus">Uranus</button>
+        <button class="pill-btn" data-template="neptune">Neptune</button>
+      </div>
+
+      <!-- Colors -->
+      <div class="color-bar">
+        <div class="color-swatch active" style="background-color: #fb923c;" data-color="#fb923c"></div> <!-- Orange -->
+        <div class="color-swatch" style="background-color: #38bdf8;" data-color="#38bdf8"></div> <!-- Cyan -->
+        <div class="color-swatch" style="background-color: #a855f7;" data-color="#a855f7"></div> <!-- Purple -->
+        <div class="color-swatch" style="background-color: #f472b6;" data-color="#f472b6"></div> <!-- Pink -->
+        <div class="color-swatch" style="background-color: #4ade80;" data-color="#4ade80"></div> <!-- Green -->
+        <div class="color-swatch" style="background-color: #ffffff;" data-color="#ffffff"></div> <!-- White -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULE SCRIPTS -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { FilesetResolver, HandLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm';
+
+    // --- CONFIG ---
+    const CONFIG = {
+      particleCount: 100000, // Heavy / Detailed
+      baseRadius: 4,
+      lerpSpeed: 0.05, // Slightly faster for responsiveness with more points
+      cameraZ: 11, // Closer render
+      colors: {
+        orange: new THREE.Color('#fb923c'),
+        cyan: new THREE.Color('#38bdf8'),
+      }
+    };
+
+    // --- GLOBAL STATE ---
+    const state = {
+      currentTemplate: 'sun',
+      targetParticlePositions: null, // Float32Array
+      scatteredPositions: null, // Float32Array (Chaos state)
+      currentColor: CONFIG.colors.orange.clone(),
+      hand: {
+        detected: false, // Default false, so it starts scattered
+        position: { x: 0.5, y: 0.5 }, // 0..1
+        tension: 0, // 0 (open) to 1 (closed)
+      },
+      time: 0
+    };
+
+    // --- THREE.JS SETUP ---
+    const container = document.getElementById('scene-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.z = CONFIG.cameraZ;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x050505, 1);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+    controls.enablePan = false;
+    controls.minDistance = 5;
+    controls.maxDistance = 25;
+
+    // --- SHAPE GENERATORS ---
+    function generateShape(type, count) {
+      const positions = new Float32Array(count * 3);
+
+      for (let i = 0; i < count; i++) {
+        let x, y, z;
+        const i3 = i * 3;
+
+        // Most planets are spheres, but size/radius might distinguish them?
+        // Let's normalize them all to baseRadius for visibility,
+        // but maybe vary the surface detail or rings.
+
+        switch (type) {
+          case 'sun':
+          case 'mercury':
+          case 'venus':
+          case 'earth':
+          case 'mars':
+          case 'jupiter':
+          case 'uranus':
+          case 'neptune': {
+            // Standard Sphere
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const r = CONFIG.baseRadius; // All same size for "App Mode" focus
+            x = r * Math.sin(phi) * Math.cos(theta);
+            y = r * Math.sin(phi) * Math.sin(theta);
+            z = r * Math.cos(phi);
+            break;
+          }
+          case 'saturn': {
+            // Sphere + Ring
+            // 70% Planet, 30% Rings
+            const isRing = Math.random() > 0.7;
+            if (isRing) {
+              // Ring
+              const r = CONFIG.baseRadius * (1.4 + Math.random() * 0.8);
+              const theta = Math.random() * Math.PI * 2;
+              x = r * Math.cos(theta);
+              z = r * Math.sin(theta);
+              y = (Math.random() - 0.5) * 0.1; // Thin
+            } else {
+              // Planet
+              const r = CONFIG.baseRadius * 0.9; // Slightly smaller than ring gap
+              const theta = Math.random() * Math.PI * 2;
+              const phi = Math.acos(2 * Math.random() - 1);
+              x = r * Math.sin(phi) * Math.cos(theta);
+              y = r * Math.sin(phi) * Math.sin(theta);
+              z = r * Math.cos(phi);
+            }
+            // Tilt
+            const tilt = 0.4;
+            const yt = y * Math.cos(tilt) - z * Math.sin(tilt);
+            const zt = y * Math.sin(tilt) + z * Math.cos(tilt);
+            y = yt;
+            z = zt;
+            break;
+          }
+          case 'chaos':
+          default:
+            // Scatter
+            const r = CONFIG.baseRadius * 6;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const dist = r * (0.5 + Math.random() * 0.5);
+            x = dist * Math.sin(phi) * Math.cos(theta);
+            y = dist * Math.sin(phi) * Math.sin(theta);
+            z = dist * Math.cos(phi);
+            break;
+        }
+        positions[i3] = x;
+        positions[i3 + 1] = y;
+        positions[i3 + 2] = z;
+      }
+      return positions;
+    }
+
+    // --- COLOR GENERATOR ---
+    function generateColors(type, positions, count) {
+      const colors = new Float32Array(count * 3);
+      const c = new THREE.Color();
+
+      for (let i = 0; i < count; i++) {
+        const i3 = i * 3;
+        const x = positions[i3];
+        const y = positions[i3 + 1];
+        const z = positions[i3 + 2];
+
+        // Normalize position to unit sphere for easy math
+        // (approximate since radius varies)
+        const r = Math.sqrt(x * x + y * y + z * z);
+        const nx = x / r;
+        const ny = y / r;
+        const nz = z / r;
+
+        switch (type) {
+          case 'sun':
+            // Orange/Yellow/Gold/Red
+            if (Math.random() > 0.3) c.set('#fb923c'); // Orange
+            else if (Math.random() > 0.5) c.set('#fcd34d'); // Yellow
+            else c.set('#ef4444'); // Red core
+            break;
+          case 'mercury':
+            // Grey/Brown
+            c.set(Math.random() > 0.5 ? '#a8a29e' : '#d6d3d1');
+            break;
+          case 'venus':
+            // Yellowish White atmosphere
+            c.set(Math.random() > 0.5 ? '#fef08a' : '#fed7aa');
+            break;
+          case 'earth':
+            // Procedural Continents
+            // Simple noise approx: sin(x*f) + sin(y*f) ...
+            const noise = Math.sin(nx * 3) + Math.cos(ny * 3) + Math.sin(nz * 3);
+
+            if (noise > 1.0) c.set('#22c55e'); // Green Land
+            else if (noise > 0.8) c.set('#f0f0f0'); // Coast/Sand/Clouds?
+            else if (Math.random() > 0.8) c.set('#ffffff'); // Clouds over ocean
+            else c.set('#3b82f6'); // Blue Ocean
+
+            // Polar Caps
+            if (Math.abs(ny) > 0.9) c.set('#ffffff');
+            break;
+          case 'mars':
+            // Red/Rust
+            c.set(Math.random() > 0.5 ? '#ef4444' : '#b91c1c');
+            break;
+          case 'jupiter':
+            // Bands on Y
+            const band = Math.sin(ny * 10 + Math.sin(nx * 5)); // Wavy bands
+            if (band > 0.5) c.set('#d97706'); // Dark Orange
+            else if (band > 0) c.set('#fde68a'); // Light yellow
+            else c.set('#92400e'); // Brownish
+
+            // Great Red Spot? (Maybe too specific for random particles)
+            break;
+          case 'saturn':
+            // Pale Gold + Rings
+            // Check if point is far from center -> Ring
+            if (r > CONFIG.baseRadius * 1.1) {
+              // Ring
+              c.set('#d4d4d8'); // Grey/White dust
+              // Add some variation
+              if (Math.abs(r - CONFIG.baseRadius * 1.8) < 0.2) c.set('#4b5563'); // Gap?
+            } else {
+              // Planet (Pale yellow)
+              c.set('#fef3c7');
+            }
+            break;
+          case 'uranus':
+            // Cyan
+            c.set('#67e8f9');
+            break;
+          case 'neptune':
+            // Deep Blue
+            c.set('#1d4ed8');
+            break;
+          default:
+            c.set('#ffffff');
+        }
+
+        // Variation
+        c.offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
+
+        colors[i3] = c.r;
+        colors[i3 + 1] = c.g;
+        colors[i3 + 2] = c.b;
+      }
+      return colors;
+    }
+
+
+    // --- PARTICLE SYSTEM ---
+
+    // Create Geometry
+    const geometry = new THREE.BufferGeometry();
+    // Init logic
+    state.targetParticlePositions = generateShape('sun', CONFIG.particleCount);
+    state.scatteredPositions = generateShape('chaos', CONFIG.particleCount);
+
+    // Start scattered!
+    const initialPositions = state.hand.detected ? state.targetParticlePositions : state.scatteredPositions;
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(initialPositions), 3));
+
+    // Init Colors based on target (Sun)
+    const initialColors = generateColors('sun', state.targetParticlePositions, CONFIG.particleCount);
+    geometry.setAttribute('color', new THREE.BufferAttribute(initialColors, 3));
+
+    // Material (Glow Shader)
+    // Using a texture for the point
+    const canvas = document.createElement('canvas');
+    canvas.width = 32; canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 32, 32);
+    const particleTexture = new THREE.CanvasTexture(canvas);
+
+    const material = new THREE.PointsMaterial({
+      size: 0.06, // Smaller for detail
+      map: particleTexture,
+      transparent: true,
+      opacity: 0.6, // More transparent for additive accumulation
+      vertexColors: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+
+    // --- HAND TRACKING SETUP ---
+    let handLandmarker = null;
+    let webcam = null;
+    let lastVideoTime = -1;
+    let handCursor = document.getElementById('hand-cursor');
+    let statusDot = document.getElementById('status-dot');
+    let statusText = document.getElementById('status-text');
+
+    async function setupVision() {
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numHands: 1
+        });
+
+        // Webcam
+        webcam = document.createElement('video');
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        webcam.srcObject = stream;
+        await webcam.play();
+
+        document.getElementById('loader').style.opacity = '0';
+        setTimeout(() => document.getElementById('loader').remove(), 500);
+
+        predict();
+      } catch (err) {
+        console.error(err);
+        document.querySelector('.loading-text').innerText = "CAMERA ERROR: " + err.message;
+      }
+    }
+
+    async function predict() {
+      if (webcam.currentTime !== lastVideoTime) {
+        lastVideoTime = webcam.currentTime;
+        const startTimeMs = performance.now();
+        const results = handLandmarker.detectForVideo(webcam, startTimeMs);
+
+        if (results.landmarks && results.landmarks.length > 0) {
+          processHand(results.landmarks[0]);
+        } else {
+          state.hand.detected = false;
+          updateStatus(false);
+        }
+      }
+      requestAnimationFrame(predict);
+    }
+
+    function processHand(landmarks) {
+      state.hand.detected = true;
+      updateStatus(true);
+
+      // 1. Position (Wrist)
+      const wrist = landmarks[0];
+      // Mirror x
+      state.hand.position.x = 1.0 - wrist.x;
+      state.hand.position.y = wrist.y;
+
+      // 2. Tension (Thump Tip vs Index Tip)
+      const thumbTip = landmarks[4];
+      const indexTip = landmarks[8];
+      const dx = thumbTip.x - indexTip.x;
+      const dy = thumbTip.y - indexTip.y;
+      const dz = thumbTip.z - indexTip.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      // Normalize: approx range 0.02 (closed) to 0.2 (open)
+      // We want Tension: 1 (Closed) -> 0 (Open)
+      // Or prompted: "When hand is more 'pinched', tension is low; when hand is open/spread, tension is high" -> User said this?
+      // Checking prompt... "When hand is more popped/pinched, tension is low; when hand is open/spread, tension is high."
+      // Wait, usually "Tension" implies tightness. Let's follow prompt explicitly.
+      // Prompt: "When hand is more “pinched”, tension is low; when hand is open/spread, tension is high."
+      // Okay.
+
+      let val = (dist - 0.02) / (0.15 - 0.02);
+      val = Math.max(0, Math.min(1, val));
+      state.hand.tension = val; // 0=Pinched, 1=Open
+
+      updateCursor();
+    }
+
+    function updateStatus(detected) {
+      if (detected) {
+        statusDot.classList.add('active');
+        statusText.innerText = `Tracked (Tension: ${state.hand.tension.toFixed(2)})`;
+        handCursor.style.display = 'block';
+      } else {
+        statusDot.classList.remove('active');
+        statusText.innerText = "No Hand Detected";
+        handCursor.style.display = 'none';
+      }
+    }
+
+    function updateCursor() {
+      const screenX = state.hand.position.x * window.innerWidth;
+      const screenY = state.hand.position.y * window.innerHeight;
+
+      handCursor.style.left = screenX + 'px';
+      handCursor.style.top = screenY + 'px';
+
+      if (state.hand.tension < 0.3) {
+        handCursor.classList.add('pinched');
+      } else {
+        handCursor.classList.remove('pinched');
+      }
+    }
+
+    // --- ANIMATION & LOGIC ---
+    const clock = new THREE.Clock();
+    const posAttr = geometry.attributes.position;
+    const colorAttr = geometry.attributes.color;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      state.time += delta;
+
+      controls.update();
+
+      // --- LOGIC ---
+
+      // 1. Hand Interaction Multipliers
+      // Prompt: "Scaling: scale from 0.7x (low tension) to 1.5x (high tension)."
+      // Tension 0 (Pinched) -> 0.7
+      // Tension 1 (Open) -> 1.5
+      let targetScale = 0.7 + (state.hand.tension * 0.8);
+      if (!state.hand.detected) targetScale = 1.0;
+
+      // 2. Rotation / Follow
+      if (state.hand.detected) {
+        const hx = (state.hand.position.x - 0.5) * 2; // -1 to 1
+        const hy = (state.hand.position.y - 0.5) * 2;
+
+        // Tilt object
+        particles.rotation.y += (hx * 1.5 - particles.rotation.y) * delta * 2;
+        particles.rotation.x += (hy * 1.5 - particles.rotation.x) * delta * 2;
+      } else {
+        // Auto rotate return to normal-ish
+        particles.rotation.y += (0 - particles.rotation.y) * delta * 0.5;
+        particles.rotation.x += (0 - particles.rotation.x) * delta * 0.5;
+        // Add ambient rotation
+        particles.rotation.y += delta * 0.1;
+      }
+
+      // 3. Morphing Logic
+      const positions = posAttr.array;
+      // IF hand detected -> Form Shape
+      // IF NO hand -> Scatter
+      const targets = state.hand.detected ? state.targetParticlePositions : state.scatteredPositions;
+
+      // Speed up lerp if hand is energetic OR we are scattering (fast scatter)
+      // If scattering, move fast
+      let speed = CONFIG.lerpSpeed;
+      if (state.hand.detected) {
+        speed *= (1 + state.hand.tension * 2.0);
+      } else {
+        speed *= 0.8; // Scatter slowly/smoothly or fast? Let's go steady.
+      }
+
+      // Noise factor
+      const noiseAmp = 0.05 * (state.hand.tension + 0.2);
+
+      for (let i = 0; i < CONFIG.particleCount; i++) {
+        const i3 = i * 3;
+
+        // Target Position
+        const tx = targets[i3];
+        const ty = targets[i3 + 1];
+        const tz = targets[i3 + 2];
+
+        // If hand detected, apply interactions (Follow/Scale)
+        // If not detected, just drift to chaos (no interactions)
+
+        if (state.hand.detected) {
+          let targetScale = 0.7 + (state.hand.tension * 0.8);
+
+          const finalTargetX = tx * targetScale;
+          const finalTargetY = ty * targetScale;
+          const finalTargetZ = tz * targetScale;
+
+          // Overwrite the previous simple lerp with this scaled lerp
+          // Re-read current (pre-update)
+          let ox = positions[i3];
+          let oy = positions[i3 + 1];
+          let oz = positions[i3 + 2];
+
+          positions[i3] = ox + (finalTargetX - ox) * speed;
+          positions[i3 + 1] = oy + (finalTargetY - oy) * speed;
+          positions[i3 + 2] = oz + (finalTargetZ - oz) * speed;
+
+        } else {
+          // Just standard lerp to chaos
+          // positions are updated above in standard way? Wait, I didn't assign them back yet.
+          let ox = positions[i3];
+          let oy = positions[i3 + 1];
+          let oz = positions[i3 + 2];
+
+          positions[i3] = ox + (tx - ox) * speed;
+          positions[i3 + 1] = oy + (ty - oy) * speed;
+          positions[i3 + 2] = oz + (tz - oz) * speed;
+        }
+      }
+      posAttr.needsUpdate = true;
+
+      renderer.render(scene, camera);
+    }
+
+    // --- UI HANDLERS ---
+    // Template Buttons
+    document.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const type = e.target.dataset.template;
+        state.currentTemplate = type;
+
+        // 1. Generate new target positions
+        state.targetParticlePositions = generateShape(type, CONFIG.particleCount);
+
+        // 2. Generate new colors based on those positions
+        const newColors = generateColors(type, state.targetParticlePositions, CONFIG.particleCount);
+        geometry.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
+
+        // Update UI
+        document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+      });
+    });
+
+    // Hide Color Swatches as they are now per-planet?
+    // User asked for "Exact colors the planet has".
+    // Manually setting color might break the planet look.
+    // Let's hide the color bar or make it do nothing?
+    // User didn't explicitly say remove it, but implicit conflict.
+    // I will hide the color bar to avoid confusion.
+    document.querySelector('.color-bar').style.display = 'none';
+
+
+    // Color Swatches
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+      swatch.addEventListener('click', (e) => {
+        const hex = e.target.dataset.color;
+        state.currentColor.set(hex);
+
+        // Animate color change
+        // We'll just sweep over the buffer over time? 
+        // Or instant. Instant is fine.
+        const cArr = colorAttr.array;
+        const targetC = new THREE.Color(hex);
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+          // Keep some variation
+          const hsl = {};
+          targetC.getHSL(hsl);
+          const varL = (Math.random() - 0.5) * 0.2;
+          const tempC = targetC.clone().offsetHSL(0, 0, varL);
+
+          cArr[i * 3] = tempC.r;
+          cArr[i * 3 + 1] = tempC.g;
+          cArr[i * 3 + 2] = tempC.b;
+        }
+        colorAttr.needsUpdate = true;
+
+        document.querySelectorAll('.color-swatch').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+
+        // Update CSS highlight
+        document.documentElement.style.setProperty('--highlight', hex);
+      });
+    });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // START
+    setupVision();
+    animate();
+
+  </script>
+</body>
+
+</html>
