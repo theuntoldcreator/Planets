@@ -839,6 +839,12 @@
         particles.rotation.y += delta * 0.1;
       }
 
+      // 2b. Dynamic Particle Size
+      // Planet = Detailed (Small: 0.06)
+      // Dust = Visible (Big: 0.18)
+      const targetSize = state.hand.detected ? 0.06 : 0.18;
+      material.size += (targetSize - material.size) * delta * 3.0;
+
       // 3. Morphing Logic
       const positions = posAttr.array;
       // IF hand detected -> Form Shape
