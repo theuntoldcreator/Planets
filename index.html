@@ -409,10 +409,10 @@
 
     // --- CONFIG ---
     const CONFIG = {
-      particleCount: 100000, // Heavy / Detailed
+      particleCount: 15000, // Ultra-Optimized
       baseRadius: 4,
-      lerpSpeed: 0.05, // Slightly faster for responsiveness with more points
-      cameraZ: 11, // Closer render
+      lerpSpeed: 0.05,
+      cameraZ: 11,
       colors: {
         orange: new THREE.Color('#fb923c'),
         cyan: new THREE.Color('#38bdf8'),
@@ -443,7 +443,7 @@
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(1); // Force 1.0 for performance on high-res screens
     renderer.setClearColor(0x050505, 1);
     container.appendChild(renderer.domElement);
 
@@ -676,7 +676,7 @@
     const particleTexture = new THREE.CanvasTexture(canvas);
 
     const material = new THREE.PointsMaterial({
-      size: 0.06, // Smaller for detail
+      size: 0.12, // Larger to compensate for lower count
       map: particleTexture,
       transparent: true,
       opacity: 0.6, // More transparent for additive accumulation
@@ -736,7 +736,16 @@
       }
     }
 
+    let lastPredictionTime = 0;
     async function predict() {
+      // Throttle vision to ~30FPS to save resources for rendering
+      const now = performance.now();
+      if (now - lastPredictionTime < 33) {
+        requestAnimationFrame(predict);
+        return;
+      }
+      lastPredictionTime = now;
+
       if (webcam.currentTime !== lastVideoTime) {
         lastVideoTime = webcam.currentTime;
         const startTimeMs = performance.now();
@@ -826,9 +835,6 @@
       // --- LOGIC ---
 
       // 1. Hand Interaction Multipliers
-      // Prompt: "Scaling: scale from 0.7x (low tension) to 1.5x (high tension)."
-      // Tension 0 (Pinched) -> 0.7
-      // Tension 1 (Open) -> 1.5
       let targetScale = 0.7 + (state.hand.tension * 0.8);
       if (!state.hand.detected) targetScale = 1.0;
 
@@ -849,71 +855,67 @@
       }
 
       // 2b. Dynamic Particle Size
-      // Planet = Detailed (Small: 0.06)
-      // Dust = Visible (Big: 0.18)
-      const targetSize = state.hand.detected ? 0.06 : 0.18;
+      // Planet = Detailed (Small: 0.15)
+      // Dust = Visible (Big: 0.45)
+      const targetSize = state.hand.detected ? 0.15 : 0.45;
       material.size += (targetSize - material.size) * delta * 3.0;
 
       // 3. Morphing Logic
       const positions = posAttr.array;
-      // IF hand detected -> Form Shape
-      // IF NO hand -> Scatter
       const targets = state.hand.detected ? state.targetParticlePositions : state.scatteredPositions;
 
-      // Speed up lerp if hand is energetic OR we are scattering (fast scatter)
-      // If scattering, move fast
+      // OPTIMIZATION: Calc loop constants once
       let speed = CONFIG.lerpSpeed;
       if (state.hand.detected) {
         speed *= (1 + state.hand.tension * 2.0);
       } else {
-        speed *= 0.8; // Scatter slowly/smoothly or fast? Let's go steady.
+        speed *= 0.8;
       }
 
-      // Noise factor
-      const noiseAmp = 0.05 * (state.hand.tension + 0.2);
+      // Detected state cache
+      const isDetected = state.hand.detected;
+      const count = CONFIG.particleCount;
 
-      for (let i = 0; i < CONFIG.particleCount; i++) {
-        const i3 = i * 3;
+      // Prepare Scale Vector if detected
+      // If detected, we scale the target. If not, target is just target (chaos).
+      // Optimization: If NOT detected, scale is 1.0, so logic simplifies.
 
-        // Target Position
-        const tx = targets[i3];
-        const ty = targets[i3 + 1];
-        const tz = targets[i3 + 2];
+      if (isDetected) {
+        // DETECTED: Apply Tension Scaling + Lerp
+        for (let i = 0; i < count; i++) {
+          const i3 = i * 3;
+          const ox = positions[i3];
+          const oy = positions[i3 + 1];
+          const oz = positions[i3 + 2];
 
-        // If hand detected, apply interactions (Follow/Scale)
-        // If not detected, just drift to chaos (no interactions)
+          const tx = targets[i3] * targetScale;
+          const ty = targets[i3 + 1] * targetScale;
+          const tz = targets[i3 + 2] * targetScale;
 
-        if (state.hand.detected) {
-          let targetScale = 0.7 + (state.hand.tension * 0.8);
+          positions[i3] = ox + (tx - ox) * speed;
+          positions[i3 + 1] = oy + (ty - oy) * speed;
+          positions[i3 + 2] = oz + (tz - oz) * speed;
+        }
+      } else {
+        // NOT DETECTED: Simple Lerp to Chaos (No scaling math needed per pixel for chaos usually)
+        for (let i = 0; i < count; i++) {
+          const i3 = i * 3;
+          const ox = positions[i3];
+          const oy = positions[i3 + 1];
+          const oz = positions[i3 + 2];
 
-          const finalTargetX = tx * targetScale;
-          const finalTargetY = ty * targetScale;
-          const finalTargetZ = tz * targetScale;
-
-          // Overwrite the previous simple lerp with this scaled lerp
-          // Re-read current (pre-update)
-          let ox = positions[i3];
-          let oy = positions[i3 + 1];
-          let oz = positions[i3 + 2];
-
-          positions[i3] = ox + (finalTargetX - ox) * speed;
-          positions[i3 + 1] = oy + (finalTargetY - oy) * speed;
-          positions[i3 + 2] = oz + (finalTargetZ - oz) * speed;
-
-        } else {
-          // Just standard lerp to chaos
-          // positions are updated above in standard way? Wait, I didn't assign them back yet.
-          let ox = positions[i3];
-          let oy = positions[i3 + 1];
-          let oz = positions[i3 + 2];
+          // Chaos targets are pre-calculated
+          const tx = targets[i3];
+          const ty = targets[i3 + 1];
+          const tz = targets[i3 + 2];
 
           positions[i3] = ox + (tx - ox) * speed;
           positions[i3 + 1] = oy + (ty - oy) * speed;
           positions[i3 + 2] = oz + (tz - oz) * speed;
         }
       }
-      posAttr.needsUpdate = true;
 
+      posAttr.needsUpdate = true;
       renderer.render(scene, camera);
     }
 
