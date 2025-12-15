@@ -4,6 +4,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- PREVENT CACHING -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <script>
+    // FORCE RESET
+    console.log('Force Resetting Application State...');
+    localStorage.clear();
+    sessionStorage.clear();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+  </script>
+
   <title>Planets - Interactive Solar System</title>
   <style>
     /* CSS RESET & BASE STYLES */
@@ -409,7 +429,7 @@
 
     // --- CONFIG ---
     const CONFIG = {
-      particleCount: 15000, // Ultra-Optimized
+      particleCount: 8000, // Extreme Low for TV
       baseRadius: 4,
       lerpSpeed: 0.05,
       cameraZ: 11,
@@ -441,9 +461,21 @@
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.z = CONFIG.cameraZ;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(1); // Force 1.0 for performance on high-res screens
+    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false }); // Disable antialias for perf
+
+    // CRITICAL PERFORMANCE FIX:
+    // Render at fixed low resolution (720p) and upscale via CSS.
+    // 4K TV Browser = Weak GPU + Massive Screen = SLOW.
+    // We render small, browser scales it up.
+    const renderWidth = 1280;
+    const renderHeight = 720;
+    renderer.setSize(renderWidth, renderHeight, false); // false = don't update style
+
+    // Manually ensure CSS stretches it
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+
+    renderer.setPixelRatio(1); // Force 1.0 on the small buffer
     renderer.setClearColor(0x050505, 1);
     container.appendChild(renderer.domElement);
 
@@ -676,7 +708,7 @@
     const particleTexture = new THREE.CanvasTexture(canvas);
 
     const material = new THREE.PointsMaterial({
-      size: 0.12, // Larger to compensate for lower count
+      size: 0.25, // REALLY Big for low count (8000)
       map: particleTexture,
       transparent: true,
       opacity: 0.6, // More transparent for additive accumulation
@@ -716,8 +748,8 @@
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user", // Prefer front camera on mobile
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 640 }, // Low Res Cam for Perf
+            height: { ideal: 480 } // Low Res Cam for Perf
           }
         });
         webcam.srcObject = stream;
@@ -738,9 +770,9 @@
 
     let lastPredictionTime = 0;
     async function predict() {
-      // Throttle vision to ~30FPS to save resources for rendering
+      // Throttle vision to ~15FPS for TV
       const now = performance.now();
-      if (now - lastPredictionTime < 33) {
+      if (now - lastPredictionTime < 66) { // 15 FPS trigger (1000/15 ~= 66)
         requestAnimationFrame(predict);
         return;
       }
@@ -855,9 +887,8 @@
       }
 
       // 2b. Dynamic Particle Size
-      // Planet = Detailed (Small: 0.15)
-      // Dust = Visible (Big: 0.45)
-      const targetSize = state.hand.detected ? 0.15 : 0.45;
+      // High Perf = Big particles
+      const targetSize = state.hand.detected ? 0.25 : 0.6;
       material.size += (targetSize - material.size) * delta * 3.0;
 
       // 3. Morphing Logic
@@ -982,9 +1013,11 @@
 
     // Resize
     window.addEventListener('resize', () => {
+      // Force internal res even on resize
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      // Do NOT update size. Always keep 1280x720.
+      // Just make sure styled scale is correct
     });
 
     // START
